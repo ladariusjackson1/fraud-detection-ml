@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fraudlab.app_cache import saved_decision
 from fraudlab.cli import main
 from fraudlab.constants import TAG_SYNTHETIC
 from fraudlab.costs import CostConfig
@@ -9,13 +10,16 @@ from fraudlab.dashboard import (
     comparison_frame,
     decode_saved_threshold,
     format_threshold,
+    load_desk,
     load_run,
     missing_artifacts,
+    missing_desk_files,
     recommended_queue,
     score_frame,
     source_banner,
 )
 from fraudlab.experiment import run_experiment
+from fraudlab.explain import explain_ticket
 from fraudlab.models import SPECS, fit_spec
 from fraudlab.plots import FIGURE_FILES, focus_queue
 
@@ -101,6 +105,29 @@ def test_cli_scorecard_round_trip(tmp_path):
     assert assets.metrics["split"]["validation"]["fraud_rate"] == pytest.approx(0.02, abs=0.015)
     assert assets.metrics["split"]["test"]["fraud_rate"] == pytest.approx(0.02, abs=0.015)
     assert format_threshold(float("inf"), "probability") == "no review (approve all)"
+    assert assets.metadata["app_cache"]["loads_public_file"] is False
+    assert assets.metadata["app_cache"]["demo_rows"] == len(assets.demo)
+    desk = load_desk(tmp_path)
+    if desk.model is not None:
+        assert desk.model.named_steps["model"].n_jobs == 1
+    assert desk.curve.n == len(assets.y_val)
+    replay = saved_decision(desk.curve, cost)
+    assert replay.total_cost == pytest.approx(selected["val_cost"])
+    assert (tmp_path / "artifacts" / "desk_curve.npz").stat().st_size < 1_000_000
+    sample = desk.demo.iloc[0]
+    columns = desk.metadata["feature_columns"]
+    sample_frame = pd.DataFrame([{column: float(sample[column]) for column in columns}])
+    explained = explain_ticket(
+        desk.model,
+        sample_frame,
+        desk.scenarios["typical_legitimate"],
+        model_key=desk.metadata["model_key"],
+        feature_columns=columns,
+        score_kind=desk.metadata["score_kind"],
+    )
+    assert explained.summary
+    assert len(explained.drivers) == len(columns)
+    assert missing_desk_files(tmp_path / "missing")
     info_level, _info = source_banner(
         {"kind": "openml", "detail": "checked", "chart_tag": "OpenML"}
     )

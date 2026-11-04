@@ -10,6 +10,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from fraudlab.app_cache import (
+    CURVE_NAME,
+    MAX_DEMO_ROWS,
+    DeskCurve,
+    assert_cloud_budget,
+    load_desk_curve,
+)
 from fraudlab.constants import TAG_SYNTHETIC
 from fraudlab.costs import (
     CostConfig,
@@ -35,7 +42,38 @@ class RunAssets:
     demo: pd.DataFrame
 
 
+@dataclass
+class DeskAssets:
+    """What the Streamlit process keeps in memory. Raw validation scores stay on disk."""
+
+    root: Path
+    metadata: dict
+    metrics: dict
+    model: object | None
+    curve: DeskCurve
+    scenarios: dict
+    demo: pd.DataFrame
+
+
+def use_one_worker(model: object | None) -> object | None:
+    """A pickled forest with ``n_jobs=-1`` forks one process per tree.
+
+    Streamlit Community Cloud's free tier is a small instance. One worker
+    keeps scoring inside that memory budget.
+    """
+    if model is None:
+        return None
+    steps = getattr(model, "named_steps", None)
+    if not isinstance(steps, dict):
+        return model
+    estimator = steps.get("model")
+    if estimator is not None and hasattr(estimator, "n_jobs"):
+        estimator.n_jobs = 1
+    return model
+
+
 def missing_artifacts(root: Path) -> list[str]:
+    root = Path(root)
     required = [
         root / "reports" / "metrics.json",
         root / "artifacts" / "metadata.json",
@@ -56,6 +94,7 @@ def missing_artifacts(root: Path) -> list[str]:
 
 
 def load_run(root: Path) -> RunAssets:
+    root = Path(root)
     missing = missing_artifacts(root)
     if missing:
         raise FileNotFoundError("Missing artifacts: " + ", ".join(missing))
@@ -63,7 +102,7 @@ def load_run(root: Path) -> RunAssets:
     metrics = json.loads((root / "reports" / "metrics.json").read_text(encoding="utf-8"))
     model = None
     if metadata["model_key"] != "amount_rule":
-        model = joblib.load(root / "artifacts" / "selected_model.joblib")
+        model = use_one_worker(joblib.load(root / "artifacts" / "selected_model.joblib"))
     arrays = np.load(root / "artifacts" / "validation_scores.npz")
     scenarios = json.loads((root / "artifacts" / "scenarios.json").read_text(encoding="utf-8"))
     demo = pd.read_csv(root / "artifacts" / "demo_transactions.csv")
@@ -75,6 +114,58 @@ def load_run(root: Path) -> RunAssets:
         y_val=arrays["y"].astype(int),
         score_val=arrays["score"].astype(float),
         amount_val=arrays["amount"].astype(float),
+        scenarios=scenarios,
+        demo=demo,
+    )
+
+
+def missing_desk_files(root: Path) -> list[str]:
+    root = Path(root)
+    required = [
+        root / "reports" / "metrics.json",
+        root / "artifacts" / "metadata.json",
+        root / "artifacts" / CURVE_NAME,
+        root / "artifacts" / "scenarios.json",
+        root / "artifacts" / "demo_transactions.csv",
+    ]
+    missing = [str(path.relative_to(root)) for path in required if not path.exists()]
+    meta_path = root / "artifacts" / "metadata.json"
+    model_path = root / "artifacts" / "selected_model.joblib"
+    if meta_path.exists():
+        metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        if metadata.get("model_key") != "amount_rule" and not model_path.exists():
+            missing.append("artifacts/selected_model.joblib")
+    elif not model_path.exists():
+        missing.append("artifacts/selected_model.joblib")
+    return missing
+
+
+def load_desk(root: Path) -> DeskAssets:
+    """Load the cloud cache. Does not open the public file or the raw score matrix."""
+    root = Path(root)
+    missing = missing_desk_files(root)
+    if missing:
+        raise FileNotFoundError("Missing artifacts: " + ", ".join(missing))
+    assert_cloud_budget(root)
+    metadata = json.loads((root / "artifacts" / "metadata.json").read_text(encoding="utf-8"))
+    metrics = json.loads((root / "reports" / "metrics.json").read_text(encoding="utf-8"))
+    model = None
+    if metadata["model_key"] != "amount_rule":
+        model = use_one_worker(joblib.load(root / "artifacts" / "selected_model.joblib"))
+    curve = load_desk_curve(root / "artifacts" / CURVE_NAME)
+    scenarios = json.loads((root / "artifacts" / "scenarios.json").read_text(encoding="utf-8"))
+    demo = pd.read_csv(root / "artifacts" / "demo_transactions.csv")
+    if len(demo) > MAX_DEMO_ROWS:
+        raise RuntimeError(
+            f"Demo sample has {len(demo)} rows. The desk keeps at most {MAX_DEMO_ROWS} "
+            "so a free-tier app can score tickets without holding the public file."
+        )
+    return DeskAssets(
+        root=root,
+        metadata=metadata,
+        metrics=metrics,
+        model=model,
+        curve=curve,
         scenarios=scenarios,
         demo=demo,
     )

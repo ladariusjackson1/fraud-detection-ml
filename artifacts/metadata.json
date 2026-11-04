@@ -113,5 +113,12 @@
     "approve_all_cost": 17314.517999999996
   },
   "validation_rows": 55133,
+  "app_cache": {
+    "curve": "artifacts/desk_curve.npz",
+    "model": "artifacts/selected_model.joblib",
+    "demo_rows": 65,
+    "grid_points": 1001,
+    "loads_public_file": false
+  },
   "random_state": 42
 }

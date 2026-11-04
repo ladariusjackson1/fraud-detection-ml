@@ -1,10 +1,20 @@
 # Credit-card fraud review lab
 
+[![Live demo](https://img.shields.io/badge/Live%20demo-Streamlit-FF4B4B)](https://fraud-detection-ml.streamlit.app)
+
 Portfolio project for **Ladarius Jackson**, Business Analytics.
 
 A card issuer does not need a model that is “accurate.” After exact duplicates are removed, this book is 275,190 legitimate transactions and 473 frauds. Approving every transaction is already 99.83% accurate, and it still pays every fraud. This project decides which tickets to pull into a manual review queue, and it scores that decision in dollars.
 
 The numbers below are from the public **OpenML creditcard · data id 1597** file. They are not from the synthetic fallback.
+
+## Live demo
+
+The review desk is deployed at <https://fraud-detection-ml.streamlit.app>. It opens on a cached queue grid, a 65-ticket sample, and the saved random forest. It does not download the 284,807-row public file.
+
+On the untouched test set that forest costs **$6,411** and saves **$10,903** against approving everything. The page can reprice the queue when the dollar assumptions change, and it can say, in plain English, which fields pushed one ticket’s fraud score up or down.
+
+![Review desk demo. A held-out ticket is scored, then the page names the fields that pushed the fraud score up or down.](docs/review-desk.gif)
 
 ## The decision, in one page
 
@@ -113,7 +123,9 @@ These scores are for ranking. They are not calibrated probabilities. The review 
 
 6. **Do not narrate V1–V28.** They are principal components from the public extract. This lab does not know which original fields they came from. OpenML data id 1597 also has no `Time` column, so this run does not use hour of day. Inventing a story for “V14” would be a false briefing.
 
-7. **One split is not a model championship.** Ninety-five test frauds make a $1,000 gap between forest and logistic regression look decisive and mean very little. The bootstrap range on the forest’s test cost runs from about $2,100 to about $12,200. Report the protocol, the interval, and the fact that the test-cost leader is not the selected model.
+7. **A per-ticket note is a score decomposition, not a case narrative.** For the ticket on screen, the desk sets each field back to a typical legitimate ticket from the training fold and rescores. If the score falls, that field was pushing the fraud score up. If the score rises, the field was pushing it down. Amount is stated in dollars. V1–V28 stay codes. The lines do not have to sum to the gap, because the trees can use fields together.
+
+8. **One split is not a model championship.** Ninety-five test frauds make a $1,000 gap between forest and logistic regression look decisive and mean very little. The bootstrap range on the forest’s test cost runs from about $2,100 to about $12,200. Report the protocol, the interval, and the fact that the test-cost leader is not the selected model.
 
 ## How a ticket is costed
 
@@ -195,9 +207,10 @@ Outputs:
 | `reports/results.md` | Generated tables. Do not hand-edit |
 | `reports/DATA_SOURCE.txt` | `OPENML CREDITCARD` or `SYNTHETIC FALLBACK` |
 | `reports/figures/` | The seven charts above |
-| `artifacts/selected_model.joblib` | The validation-chosen pipeline |
-| `artifacts/validation_scores.npz` | Validation labels, scores, and amounts, so the desk can retune the queue without refitting |
-| `artifacts/demo_transactions.csv` | Held-out examples. Labels are in the file so the desk can reveal them |
+| `artifacts/selected_model.joblib` | The validation-chosen pipeline. About 140 KB |
+| `artifacts/desk_curve.npz` | Cached queue grid for the Streamlit desk: 1,001 queue sizes scored on the validation book, stored as counts so the dollar assumptions can still move |
+| `artifacts/validation_scores.npz` | Validation labels, scores, and amounts. The training run writes this. The deployed app does not load it |
+| `artifacts/demo_transactions.csv` | 65 held-out sample tickets. Labels are in the file so the desk can reveal them |
 
 Joblib will execute code on load. Load only a model you produced locally.
 
@@ -205,9 +218,17 @@ Joblib will execute code on load. Load only a model you produced locally.
 
 `streamlit run app/streamlit_app.py` opens three tabs.
 
-**Queue cutoff.** Edit the three dollar assumptions. The chart replays the validation set. “Use cost-minimizing queue” jumps the slider to the cutoff those assumptions imply. The four headline metrics at the top of the page stay the published test result. Dragging the slider does not rewrite them.
+**Queue cutoff.** Edit the three dollar assumptions. The chart replays `artifacts/desk_curve.npz`, a grid of 1,001 queue sizes scored on the full validation book before the app was packaged. “Use cost-minimizing queue” jumps the slider to the cheapest point on that grid. The four headline metrics at the top of the page stay the published test result. Dragging the slider does not rewrite them.
 
-**Score a transaction.** Score a held-out example, or a training-fold median profile, and change the amount. The page shows the four possible costs for that ticket. It does not multiply the score by the amount and call that an expected loss. Reveal the held-out label when you want the realized cost of the call you just made. V1–V28 can be edited; they still do not have business names.
+**Score a transaction.** Score a held-out sample ticket, or a training-fold median profile, and change the amount. Under the score, the page says which fields pushed it up and which pushed it down, compared with a typical legitimate ticket. The page also shows the four possible costs for that ticket. It does not multiply the score by the amount and call that an expected loss. Reveal the held-out label when you want the realized cost of the call you just made. V1–V28 can be edited; they still do not have business names.
+
+## Streamlit Community Cloud
+
+Deploy this repository as-is. Main file `streamlit_app.py`. Python 3.12 (`.python-version`, the same version CI uses). Dependencies are pinned in `requirements.txt`. Theme, headless mode, and the free-tier server settings are in `.streamlit/config.toml`.
+
+The host does not need the OpenML file, and the app never calls out for it. Startup reads the queue grid, the 65-row sample, three training profiles, and the saved model. On load, the model is pinned to one worker. The pickle was fit with `n_jobs=-1`; leaving that in place forks a process per tree and will exhaust a 1 GB instance. A guard refuses to start if the model, the curve, or the sample exceed the size budget.
+
+Live demo: <https://fraud-detection-ml.streamlit.app>
 
 **Model comparison.** The held-out table and the charts. The test-cost leader is named even when it is not the deployed model.
 

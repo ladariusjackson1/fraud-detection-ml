@@ -27,3 +27,9 @@ def test_readme_quotes_the_public_scorecard():
         assert figure.read_bytes().startswith(b"\x89PNG")
         assert figure.stat().st_size > 1000
         assert name in readme
+    assert "https://fraud-detection-ml.streamlit.app" in readme
+    assert "Live demo" in readme
+    assert "docs/review-desk.gif" in readme
+    gif = ROOT / "docs" / "review-desk.gif"
+    assert gif.read_bytes()[:6] in {b"GIF87a", b"GIF89a"}
+    assert gif.stat().st_size > 10_000
