@@ -1,0 +1,52 @@
+{
+  "rows": 55133,
+  "frauds": 95,
+  "fraud_rate": 0.0017231059438086083,
+  "threshold": 0.41357389738437655,
+  "flag_rate": 0.0017231059438086083,
+  "precision": 0.7789473684210526,
+  "recall": 0.7789473684210526,
+  "reviews_per_10k": 17.23105943808608,
+  "score_quantiles": {
+    "all": {
+      "p50": 0.0,
+      "p90": 0.00998890825542703,
+      "p99": 0.08697711117774706,
+      "p999": 0.8877012467042922
+    },
+    "legitimate": {
+      "p50": 0.0,
+      "p90": 0.009973024278149665,
+      "p99": 0.07790870009002523,
+      "p999": 0.20484260698183762
+    },
+    "fraud": {
+      "p50": 0.8778017161785968,
+      "p90": 0.9995482474685126,
+      "p99": 0.9996187362033623,
+      "p999": 0.9996425740156709
+    }
+  },
+  "amount_quantiles_usd": {
+    "legitimate": {
+      "p50": 25.839,
+      "p90": 226.60000000000002,
+      "p99": 1100.0,
+      "p999": 3213.367168000066
+    },
+    "fraud": {
+      "p50": 7.414000000000001,
+      "p90": 651.398000000001,
+      "p99": 1675.536500000001,
+      "p999": 1959.1368500000021
+    }
+  },
+  "validation_half_psi": 0.00016975684209426746,
+  "has_time": false,
+  "notes": [
+    "This file has no Time column, so calendar drift was not measured. The figures below are the validation-book reference a later extract would be compared with.",
+    "At the frozen cutoff the validation book flags 0.172% of tickets (17.2 per 10,000), with precision 0.779 and recall 0.779.",
+    "A random split of the validation scores has PSI 0.0002. That number checks whether two halves of the same book look alike. It is not a drift event. Compare a new batch with population_stability_index against these validation scores. A PSI above 0.25 is a common credit-scorecard review trigger; that cutoff is a convention, not a result estimated from this file.",
+    "When a new book arrives, compare four things with this reference before refitting: the flag rate at the frozen cutoff, the score PSI, the precision of tickets that were actually reviewed once labels arrive, and the amount median. A one-day move inside the bootstrap interval on test cost is not a reason to refit."
+  ]
+}

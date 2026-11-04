@@ -25,8 +25,9 @@ from fraudlab.costs import (
     decode_threshold,
     one_row_cost_table,
 )
+from fraudlab.model_card import HEADLINE_KEYS
 from fraudlab.models import positive_scores
-from fraudlab.reporting import money
+from fraudlab.reporting import format_ci, money
 
 
 @dataclass
@@ -53,6 +54,7 @@ class DeskAssets:
     curve: DeskCurve
     scenarios: dict
     demo: pd.DataFrame
+    monitoring: dict
 
 
 def use_one_worker(model: object | None) -> object | None:
@@ -127,6 +129,7 @@ def missing_desk_files(root: Path) -> list[str]:
         root / "artifacts" / CURVE_NAME,
         root / "artifacts" / "scenarios.json",
         root / "artifacts" / "demo_transactions.csv",
+        root / "artifacts" / "monitoring_reference.json",
     ]
     missing = [str(path.relative_to(root)) for path in required if not path.exists()]
     meta_path = root / "artifacts" / "metadata.json"
@@ -154,6 +157,9 @@ def load_desk(root: Path) -> DeskAssets:
         model = use_one_worker(joblib.load(root / "artifacts" / "selected_model.joblib"))
     curve = load_desk_curve(root / "artifacts" / CURVE_NAME)
     scenarios = json.loads((root / "artifacts" / "scenarios.json").read_text(encoding="utf-8"))
+    monitoring = json.loads(
+        (root / "artifacts" / "monitoring_reference.json").read_text(encoding="utf-8")
+    )
     demo = pd.read_csv(root / "artifacts" / "demo_transactions.csv")
     if len(demo) > MAX_DEMO_ROWS:
         raise RuntimeError(
@@ -168,6 +174,7 @@ def load_desk(root: Path) -> DeskAssets:
         curve=curve,
         scenarios=scenarios,
         demo=demo,
+        monitoring=monitoring,
     )
 
 
@@ -235,6 +242,10 @@ def comparison_frame(metrics: dict) -> pd.DataFrame:
                 "Model": row["display_name"],
                 "Selected": "yes" if row["key"] == metrics["selected_model"] else "",
                 "Test PR-AUC": round(float(row["test_average_precision"]), 3),
+                "Test PR-AUC 95% CI": format_ci(
+                    row["test_average_precision"],
+                    row["test_average_precision_ci95"],
+                ),
                 "Recall": round(float(row["test_recall"]), 3),
                 "Precision": None
                 if row["test_precision"] is None
@@ -244,6 +255,47 @@ def comparison_frame(metrics: dict) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def headline_comparison(metrics: dict) -> pd.DataFrame:
+    """Class-weighted logistic, random forest, and gradient boosting, with test intervals."""
+    rows = []
+    for key in HEADLINE_KEYS:
+        row = next((item for item in metrics["models"] if item["key"] == key), None)
+        if row is None:
+            raise KeyError(f"Scorecard is missing {key}")
+        rows.append(
+            {
+                "Model": row["display_name"],
+                "Selected": "yes" if row["key"] == metrics["selected_model"] else "",
+                "Val PR-AUC": round(float(row["val_average_precision"]), 3),
+                "Test PR-AUC (95% CI)": format_ci(
+                    row["test_average_precision"],
+                    row["test_average_precision_ci95"],
+                ),
+                "Validation cost (USD)": round(float(row["val_cost"]), 2),
+                "Test cost (USD)": round(float(row["test_cost"]), 2),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def overview_blurb(metrics: dict) -> str:
+    """Short desk summary. Every figure is read from the scorecard."""
+    selected = next(row for row in metrics["models"] if row["key"] == metrics["selected_model"])
+    text = (
+        f"{selected['display_name']} was selected on validation cost. "
+        f"On the test set it costs {money(selected['test_cost'])} "
+        f"and saves {money(selected['savings_vs_approve_all'])} against approving everything "
+        f"({money(metrics['approve_all_test_cost'])}). "
+        "Test PR-AUC is "
+        f"{format_ci(selected['test_average_precision'], selected['test_average_precision_ci95'])}. "
+    )
+    if metrics["test_cost_leader"] != selected["key"]:
+        text += f"The test-cost leader is `{metrics['test_cost_leader']}`, and it was not selected."
+    else:
+        text += "That is also the test-cost leader."
+    return text
 
 
 def single_ticket_costs(amount: float, cost: CostConfig) -> dict[str, float]:
