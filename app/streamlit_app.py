@@ -18,6 +18,14 @@ import pandas as pd
 import streamlit as st
 from matplotlib.ticker import FuncFormatter
 
+from fraudlab.app_cache import (
+    SLIDER_MAX,
+    best_grid_queue,
+    grid_costs,
+    grid_decision,
+    saved_decision,
+    startup_note,
+)
 from fraudlab.constants import V_COLUMNS
 from fraudlab.costs import CostConfig, realized_unit_cost
 from fraudlab.dashboard import (
@@ -25,13 +33,12 @@ from fraudlab.dashboard import (
     decode_saved_threshold,
     format_threshold,
     frame_from_mapping,
-    load_run,
-    queue_decision,
-    recommended_queue,
+    load_desk,
     score_frame,
     single_ticket_costs,
     source_banner,
 )
+from fraudlab.explain import COMPONENT_NOTE, explain_ticket
 from fraudlab.plots import apply_style, focus_queue
 from fraudlab.reporting import money, percent
 
@@ -41,7 +48,6 @@ PROFILE_LABELS = {
     "smaller_fraud_profile": "Smaller-fraud profile (training median)",
     "larger_fraud_profile": "Larger-fraud profile (training median)",
 }
-SLIDER_MAX = 1000
 
 
 def inject_css() -> None:
@@ -62,7 +68,7 @@ def inject_css() -> None:
 
 @st.cache_resource
 def cached_assets():
-    return load_run(ROOT)
+    return load_desk(ROOT)
 
 
 def main() -> None:
@@ -80,6 +86,13 @@ def main() -> None:
 
     level, text = source_banner(assets.metadata["data_source"])
     getattr(st, level)(text)
+    st.caption(
+        startup_note(
+            validation_rows=int(assets.curve.n),
+            demo_rows=int(len(assets.demo)),
+            grid_points=int(len(assets.curve.reviews_per_10k)),
+        )
+    )
     _header(assets)
     cutoff, score, compare = st.tabs(["Queue cutoff", "Score a transaction", "Model comparison"])
     with cutoff:
@@ -113,7 +126,8 @@ def _cutoff_tab(assets) -> None:
     st.write(
         "Class-weighted scores are ranking tools, not calibrated probabilities. "
         "The control that matches the review desk is how many tickets you pull per 10,000 transactions. "
-        "Moving the slider replays the validation set. It does not rewrite the published test result."
+        "Moving the slider replays a cached grid scored on the validation book before this app was packaged. "
+        "It does not rewrite the published test result, and it does not load the public file."
     )
     base = CostConfig.from_dict(assets.metadata["cost_config"])
     inputs = st.columns(3)
@@ -139,14 +153,11 @@ def _cutoff_tab(assets) -> None:
         help="Extra operations cost on an approved fraud, on top of the ticket amount.",
     )
     cost = CostConfig(review_cost=review, false_decline_cost=decline, chargeback_fee=fee)
-    _threshold, recommended = recommended_queue(
-        assets.y_val, assets.score_val, assets.amount_val, cost
-    )
-    recommended_per_10k = int(np.clip(round(recommended.reviews_per_10k), 0, SLIDER_MAX))
+    recommended_per_10k, _recommended_threshold, recommended = best_grid_queue(assets.curve, cost)
     if "per_10k" not in st.session_state:
-        st.session_state.per_10k = recommended_per_10k
+        st.session_state.per_10k = int(recommended_per_10k)
     if st.button("Use cost-minimizing queue"):
-        st.session_state.per_10k = recommended_per_10k
+        st.session_state.per_10k = int(recommended_per_10k)
     per_10k = st.slider(
         "Reviews per 10,000 transactions",
         min_value=0,
@@ -154,13 +165,7 @@ def _cutoff_tab(assets) -> None:
         step=1,
         key="per_10k",
     )
-    threshold, decision = queue_decision(
-        assets.y_val,
-        assets.score_val,
-        assets.amount_val,
-        cost,
-        float(per_10k),
-    )
+    threshold, decision = grid_decision(assets.curve, float(per_10k), cost)
     kind = assets.metadata["score_kind"]
     st.write(
         f"Score cutoff: **{format_threshold(threshold, kind)}**. "
@@ -172,47 +177,33 @@ def _cutoff_tab(assets) -> None:
     cards[0].metric("Validation cost", money(decision.total_cost))
     cards[1].metric("Validation precision", precision)
     cards[2].metric("Validation recall", f"{decision.recall:.3f}")
-    saved_cost = decision_from_saved(assets, cost)
+    saved = saved_decision(assets.curve, cost)
     cards[3].metric("Cost-minimizing validation cost", money(recommended.total_cost))
     st.caption(
         "Published test cost at the frozen cutoff, under the training cost assumptions: "
         f"{money(assets.metadata['test_summary']['cost'])}. "
         f"Saved cutoff: {format_threshold(decode_saved_threshold(assets.metadata), kind)}. "
-        f"Replayed validation cost at the saved cutoff with the costs currently on screen: {money(saved_cost)}."
+        "Replayed validation cost at the saved cutoff with the costs currently on screen: "
+        f"{money(saved.total_cost)}."
     )
-    _plot_curve(assets, cost, decision)
-    if recommended.reviews_per_10k > SLIDER_MAX:
+    _plot_curve(assets, cost, decision, int(per_10k))
+    if recommended_per_10k >= SLIDER_MAX:
         st.info(
-            "The cost-minimizing queue is above the slider maximum. Raise review capacity in a new training run."
+            "The cheapest queue on this grid is at the slider maximum. "
+            "A cost assumption that wants a longer queue needs a new training run to see past "
+            f"{SLIDER_MAX:,} reviews per 10,000."
         )
 
 
-def decision_from_saved(assets, cost: CostConfig) -> float:
-    from fraudlab.costs import decision_cost
-
-    return decision_cost(
-        assets.y_val,
-        assets.score_val,
-        assets.amount_val,
-        decode_saved_threshold(assets.metadata),
-        cost,
-    ).total_cost
-
-
-def _plot_curve(assets, cost: CostConfig, decision) -> None:
-    from fraudlab.costs import threshold_curve
-
-    curve = threshold_curve(assets.y_val, assets.score_val, assets.amount_val, cost)
+def _plot_curve(assets, cost: CostConfig, decision, per_10k: int) -> None:
+    costs = grid_costs(assets.curve, cost)
+    reviews = assets.curve.reviews_per_10k.astype(float)
     apply_style()
     fig, ax = plt.subplots(figsize=(8.0, 4.2))
-    shown_reviews, shown_costs = focus_queue(
-        curve["reviews_per_10k"].to_numpy(),
-        curve["total_cost"].to_numpy(),
-        decision.reviews_per_10k,
-    )
+    shown_reviews, shown_costs = focus_queue(reviews, costs, float(per_10k))
     order = np.argsort(shown_reviews)
     ax.plot(shown_reviews[order], shown_costs[order], color="#1F4E79", lw=2)
-    ax.scatter([decision.reviews_per_10k], [decision.total_cost], color="#B42318", s=42, zorder=3)
+    ax.scatter([per_10k], [decision.total_cost], color="#B42318", s=42, zorder=3)
     ax.set_xlim(left=0)
     ceiling = float(np.nanmax(shown_costs)) if len(shown_costs) else 1.0
     ax.set_ylim(0, ceiling * 1.08 if ceiling > 0 else 1)
@@ -250,6 +241,7 @@ def _score_tab(assets) -> None:
         st.success(
             f"Approve this ticket. Score {score:.4f}. Cutoff {format_threshold(threshold, assets.metadata['score_kind'])}."
         )
+    _explain(assets, frame)
     costs = single_ticket_costs(amount, CostConfig.from_dict(assets.metadata["cost_config"]))
     grid = st.columns(4)
     grid[0].metric(
@@ -276,10 +268,31 @@ def _score_tab(assets) -> None:
 def _active_threshold(assets) -> float:
     """Use the queue slider when the cutoff tab has set it; otherwise the saved cutoff."""
     if "per_10k" in st.session_state:
-        from fraudlab.costs import threshold_at_flag_rate
-
-        return threshold_at_flag_rate(assets.score_val, float(st.session_state.per_10k) / 10_000)
+        threshold, _decision = grid_decision(
+            assets.curve, float(st.session_state.per_10k), CostConfig()
+        )
+        return threshold
     return decode_saved_threshold(assets.metadata)
+
+
+def _explain(assets, frame: pd.DataFrame) -> None:
+    reference = assets.scenarios.get("typical_legitimate")
+    if reference is None:
+        st.info("No typical legitimate profile was saved, so this ticket is not compared.")
+        return
+    explanation = explain_ticket(
+        assets.model,
+        frame,
+        reference,
+        model_key=assets.metadata["model_key"],
+        feature_columns=list(assets.metadata["feature_columns"]),
+        score_kind=assets.metadata["score_kind"],
+    )
+    st.subheader("What pushed the score")
+    st.write(explanation.summary)
+    for sentence in explanation.sentences:
+        st.markdown(f"- {sentence}")
+    st.caption(COMPONENT_NOTE)
 
 
 def _demo_choice(assets) -> tuple[pd.DataFrame, int, float]:

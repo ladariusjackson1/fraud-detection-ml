@@ -299,6 +299,49 @@ def threshold_at_flag_rate(scores: np.ndarray, flag_rate: float) -> float:
     return float(np.quantile(score, 1.0 - flag_rate))
 
 
+def decision_from_counts(
+    *,
+    true_positives: int,
+    false_positives: int,
+    true_negatives: int,
+    false_negatives: int,
+    false_negative_amount: float,
+    n: int,
+    cost: CostConfig,
+) -> DecisionCost:
+    """Rebuild a decision from stored counts. Dollars can change; the counts do not."""
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if min(true_positives, false_positives, true_negatives, false_negatives) < 0:
+        raise ValueError("Counts must be >= 0")
+    if true_positives + false_positives + true_negatives + false_negatives != n:
+        raise ValueError("Counts must sum to n")
+    if not np.isfinite(false_negative_amount) or false_negative_amount < -1e-8:
+        raise ValueError("false_negative_amount must be finite and >= 0")
+    flagged_n = true_positives + false_positives
+    precision = float("nan") if flagged_n == 0 else true_positives / flagged_n
+    fraud_n = true_positives + false_negatives
+    recall = 0.0 if fraud_n == 0 else true_positives / fraud_n
+    flag_rate = flagged_n / n
+    total = float(
+        _total_cost(true_positives, false_positives, false_negatives, false_negative_amount, cost)
+    )
+    return DecisionCost(
+        total_cost=total,
+        true_positives=int(true_positives),
+        false_positives=int(false_positives),
+        true_negatives=int(true_negatives),
+        false_negatives=int(false_negatives),
+        false_negative_amount=float(false_negative_amount),
+        precision=float(precision),
+        recall=float(recall),
+        flag_rate=float(flag_rate),
+        reviews_per_10k=float(flag_rate * 10_000),
+        analyst_hours=float(flagged_n * cost.minutes_per_review / 60.0),
+        n=int(n),
+    )
+
+
 def realized_unit_cost(label: int, flagged: bool, amount: float, cost: CostConfig) -> float:
     if label not in (0, 1):
         raise ValueError("Label must be 0 or 1")

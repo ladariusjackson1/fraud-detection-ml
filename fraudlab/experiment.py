@@ -25,6 +25,7 @@ from sklearn.model_selection import train_test_split
 
 matplotlib.use("Agg", force=True)
 
+from fraudlab.app_cache import SLIDER_MAX, save_desk_curve
 from fraudlab.constants import (
     DEFAULT_SEED,
     DEFAULT_USD_PER_EUR,
@@ -428,6 +429,13 @@ def _write_artifacts(
             "approve_all_cost": selected["approve_all_test_cost"],
         },
         "validation_rows": int(len(validation)),
+        "app_cache": {
+            "curve": "artifacts/desk_curve.npz",
+            "model": "artifacts/selected_model.joblib",
+            "demo_rows": _demo_row_count(test),
+            "grid_points": SLIDER_MAX + 1,
+            "loads_public_file": False,
+        },
         "random_state": metrics["random_state"],
     }
     artifacts = root / "artifacts"
@@ -438,6 +446,13 @@ def _write_artifacts(
         y=bank["y_val"].astype(np.int8),
         score=bank["score_val"].astype(np.float64),
         amount=bank["amount_val"].astype(np.float64),
+    )
+    save_desk_curve(
+        artifacts / "desk_curve.npz",
+        bank["y_val"],
+        bank["score_val"],
+        bank["amount_val"],
+        saved_threshold=_threshold(selected),
     )
     _write_demo(artifacts, test, bank["score_test"], metrics["random_state"])
     dump_json(artifacts / "scenarios.json", _profiles(train, feature_columns))
@@ -548,6 +563,12 @@ def _validation_curve_arrays(
         "reviews_per_10k": curve["reviews_per_10k"].to_numpy(dtype=float),
         "total_cost": curve["total_cost"].to_numpy(dtype=float),
     }
+
+
+def _demo_row_count(test: pd.DataFrame) -> int:
+    frauds = int((test["Class"] == 1).sum())
+    legits = int((test["Class"] == 0).sum())
+    return min(25, frauds) + min(40, legits)
 
 
 def _write_demo(artifacts: Path, test: pd.DataFrame, scores: np.ndarray, seed: int) -> None:

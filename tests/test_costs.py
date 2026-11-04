@@ -5,6 +5,7 @@ from fraudlab.costs import (
     CostConfig,
     best_operating_point,
     decision_cost,
+    decision_from_counts,
     encode_threshold,
     one_row_cost_table,
     realized_unit_cost,
@@ -100,3 +101,53 @@ def test_flag_rate_cutoff_and_unit_costs():
         realized_unit_cost(2, False, 10, cost)
     with pytest.raises(ValueError):
         one_row_cost_table(-5, cost)
+    rebuilt = decision_from_counts(
+        true_positives=2,
+        false_positives=0,
+        true_negatives=2,
+        false_negatives=0,
+        false_negative_amount=0.0,
+        n=4,
+        cost=cost,
+    )
+    assert rebuilt.total_cost == pytest.approx(16)
+    with pytest.raises(ValueError):
+        decision_from_counts(
+            true_positives=1,
+            false_positives=0,
+            true_negatives=0,
+            false_negatives=0,
+            false_negative_amount=0.0,
+            n=4,
+            cost=cost,
+        )
+    with pytest.raises(ValueError):
+        decision_from_counts(
+            true_positives=0,
+            false_positives=0,
+            true_negatives=1,
+            false_negatives=0,
+            false_negative_amount=-1.0,
+            n=1,
+            cost=cost,
+        )
+    with pytest.raises(ValueError):
+        decision_from_counts(
+            true_positives=0,
+            false_positives=0,
+            true_negatives=0,
+            false_negatives=0,
+            false_negative_amount=0.0,
+            n=0,
+            cost=cost,
+        )
+    with pytest.raises(ValueError):
+        decision_from_counts(
+            true_positives=-1,
+            false_positives=2,
+            true_negatives=0,
+            false_negatives=0,
+            false_negative_amount=0.0,
+            n=1,
+            cost=cost,
+        )
