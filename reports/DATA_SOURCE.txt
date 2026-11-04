@@ -1,0 +1,10 @@
+OPENML CREDITCARD
+
+OpenML creditcard · data id 1597
+
+Public OpenML creditcard extract, verified at 284,807 rows and 492 frauds before dropping 9,144 exact duplicate rows. Amount was converted from EUR to USD at the planning rate. Time is not in this OpenML file, so no hour features were used.
+
+Rows in the modeling table: 275,663
+Fraud rows in the modeling table: 473
+Fraud rate: 0.171586%
+Amount unit: USD
