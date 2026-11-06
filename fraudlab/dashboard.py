@@ -27,7 +27,7 @@ from fraudlab.costs import (
 )
 from fraudlab.model_card import HEADLINE_KEYS
 from fraudlab.models import positive_scores
-from fraudlab.reporting import format_ci, money
+from fraudlab.reporting import format_ci, independent_rounding_note, money
 
 
 @dataclass
@@ -292,9 +292,12 @@ def overview_blurb(metrics: dict) -> str:
         f"{format_ci(selected['test_average_precision'], selected['test_average_precision_ci95'])}. "
     )
     if metrics["test_cost_leader"] != selected["key"]:
-        text += f"The test-cost leader is `{metrics['test_cost_leader']}`, and it was not selected."
+        text += (
+            f"The test-cost leader is `{metrics['test_cost_leader']}`, and it was not selected. "
+        )
     else:
-        text += "That is also the test-cost leader."
+        text += "That is also the test-cost leader. "
+    text += independent_rounding_note(metrics["approve_all_test_cost"], selected["test_cost"])
     return text
 
 

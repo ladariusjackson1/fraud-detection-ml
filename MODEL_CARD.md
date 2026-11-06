@@ -12,6 +12,7 @@ Generated from `reports/metrics.json` and the validation-score reference. Do not
 - **Test PR-AUC:** 0.679 (0.579–0.788).
 - **Test cost:** $6,411 (95% bootstrap CI $2,102–$12,180).
 - **Savings versus approve-all:** $10,903.
+- **Rounding:** Each displayed dollar amount is rounded to the nearest dollar on its own. Exact approve-all cost is $17,314.52. Exact policy cost is $6,411.16. Exact savings are $10,903.35, which rounds to $10,903. Subtracting the already-rounded headlines gives $17,315 − $6,411 = $10,904.
 - **Test-cost leader:** `logistic_undersampled`. Selection matches that leader: false.
 
 ## Intended use
@@ -56,6 +57,10 @@ The random forest is deployed only because it won validation cost. The full scor
 - Caught frauds: 76. Missed frauds: 19. Legitimate tickets pulled: 25.
 - Missed-fraud principal: $4,828.
 - Approve-all cost on the same rows: $17,315.
+
+Approve-all pays the principal on all 95 test frauds, $14,939.52, plus $25.00 on each ($2,375.00), and no review cost: $17,314.52. The $4,828 line is the principal of the 19 missed frauds only.
+
+The savings column is the exact cost difference, rounded to the nearest dollar. It is not the difference of the rounded cost figures. Those two procedures differ by $1 for: Logistic regression, undersampled; Random forest; Isolation forest.
 
 ## Cost assumptions
 

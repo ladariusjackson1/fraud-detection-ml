@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from fraudlab.monitoring import profile_table
-from fraudlab.reporting import format_ci, money
+from fraudlab.reporting import (
+    approve_all_composition_note,
+    format_ci,
+    independent_rounding_note,
+    money,
+    savings_column_note,
+)
 
 HEADLINE_KEYS = ("logistic_balanced", "random_forest", "gradient_boosting")
 
@@ -61,6 +67,7 @@ def render_model_card(metrics: dict, monitoring: dict) -> str:
             f"(95% bootstrap CI {_ci_money(selected['test_cost_ci95'])})."
         ),
         f"- **Savings versus approve-all:** {money(selected['savings_vs_approve_all'])}.",
+        f"- **Rounding:** {independent_rounding_note(metrics['approve_all_test_cost'], selected['test_cost'])}",
         (
             f"- **Test-cost leader:** `{metrics['test_cost_leader']}`. "
             f"Selection matches that leader: {str(metrics['selection_matches_test_leader']).lower()}."
@@ -158,6 +165,16 @@ def render_model_card(metrics: dict, monitoring: dict) -> str:
             ),
             f"- Missed-fraud principal: {money(selected['test_false_negative_amount'])}.",
             f"- Approve-all cost on the same rows: {money(metrics['approve_all_test_cost'])}.",
+            "",
+        ]
+    )
+    composition = approve_all_composition_note(metrics)
+    if composition:
+        lines.append(composition)
+        lines.append("")
+    lines.extend(
+        [
+            savings_column_note(metrics),
             "",
             "## Cost assumptions",
             "",
