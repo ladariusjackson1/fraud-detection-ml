@@ -1,6 +1,6 @@
 # Credit-card fraud review lab
 
-[![Live demo](https://img.shields.io/badge/Live%20demo-Streamlit-FF4B4B)](https://fraud-detection-ml.streamlit.app)
+[![App link](https://img.shields.io/badge/App%20link-sign--in%20required-FF4B4B)](https://fraud-detection-ml.streamlit.app)
 
 Portfolio project for **Ladarius Jackson**, Business Analytics.
 
@@ -8,17 +8,21 @@ A card issuer does not need a model that is “accurate.” After exact duplicat
 
 The numbers below are from the public **OpenML creditcard · data id 1597** file. They are not from the synthetic fallback.
 
-## Live demo
+## App link
 
-The review desk is deployed at <https://fraud-detection-ml.streamlit.app>. It opens on a cached queue grid, a 65-ticket sample, and the saved random forest. It does not download the 284,807-row public file. The page has an alert-budget slider, a one-ticket replay of that sample, and a CSV scorer. The published test numbers on the overview do not move when those controls move.
+The intended host is <https://fraud-detection-ml.streamlit.app>. An unauthenticated request currently receives HTTP 303 and is redirected to Streamlit's sign-in page. Access is pending. That URL is not a verified public deployment.
+
+Run the desk locally with `streamlit run streamlit_app.py`. The recording below is from that local app. It opens on a cached queue grid, a 65-ticket sample, and the saved random forest. It does not download the 284,807-row public file. The page has an alert-budget slider, a one-ticket replay of that sample, and a CSV scorer. The published test numbers on the overview do not move when those controls move.
 
 On the untouched test set that forest costs **$6,411** and saves **$10,903** against approving everything. The page can reprice the queue when the dollar assumptions change, and it can say, in plain English, which fields pushed one ticket’s fraud score up or down.
 
-![Review desk demo. A held-out ticket is scored, then the page names the fields that pushed the fraud score up or down.](docs/review-desk.gif)
+![Local recording of the review desk. A held-out ticket is scored, then the page names the fields that pushed the fraud score up or down.](docs/review-desk.gif)
 
 ## The decision, in one page
 
 Approving every held-out transaction costs **$17,315**. The selection rule was locked before looking at the test set: pick the model with the lowest **validation** dollar cost, and break ties with validation PR-AUC. That rule selects a **random forest**. At the cutoff chosen on validation (score ≥ 0.413574), the forest costs **$6,411** on the test set and saves **$10,903** against approve-all. The 95% bootstrap interval on that test cost is **$2,102–$12,180**. The interval is wide because the test slice has 95 frauds.
+
+Each displayed dollar amount is rounded to the nearest dollar on its own. Exact approve-all cost is $17,314.52. Exact policy cost is $6,411.16. Exact savings are $10,903.35, which rounds to $10,903. Subtracting the already-rounded headlines gives $17,315 − $6,411 = $10,904.
 
 On that same test slice, an undersampled logistic regression costs **$5,728** and has a higher PR-AUC (**0.713** vs **0.679**). It was not selected. Switching to it after seeing the test set would make the holdout optimistic. The gap is also small next to the bootstrap interval. What is stable is the gap between the supervised models and the two weak policies: a large-ticket rule, and a class-weighted logistic regression left at a 0.50 cutoff.
 
@@ -61,9 +65,11 @@ Each cutoff minimizes validation dollar cost. Among tied cutoffs, the higher sco
 | Isolation forest | 0.005803 | 0.132 | 0.674 | 0.9% | 88.0 | $14,346 | $2,968 |
 | Amount-only rule | approve all | n/a | 0.000 | 0.0% | 0.0 | $17,315 | $0 |
 
+The savings column is the exact cost difference, rounded to the nearest dollar. It is not the difference of the rounded cost figures. Those two procedures differ by $1 for: Logistic regression, undersampled; Random forest; Isolation forest.
+
 The class-weighted logistic cutoff is 0.999979, not 0.50. Class weights move probability mass upward. A score of 0.50 is not “50% chance of fraud,” and it is not a business decision.
 
-Validation costs, which are what the selection rule saw: random forest $7,856, class-weighted logistic $7,899, gradient boosting $8,336, undersampled logistic $8,421, isolation forest $15,770, amount rule $19,165. The forest won validation by a few hundred dollars. The test set ranked the undersampled logistic first. `reports/metrics.json` records both, including `selection_matches_test_leader: false`.
+Validation costs, which are what the selection rule saw: random forest $7,856, class-weighted logistic $7,899, gradient boosting $8,335, undersampled logistic $8,421, isolation forest $15,770, amount rule $19,165. The forest won validation by a few hundred dollars. The test set ranked the undersampled logistic first. `reports/metrics.json` records both, including `selection_matches_test_leader: false`.
 
 ### Where the forest’s $6,411 goes
 
@@ -77,7 +83,7 @@ On 55,133 test transactions (95 frauds):
 | Review plus false-decline cost on legitimate tickets | 25 × $20 | $500 |
 | **Total** |  | **$6,411** |
 
-Approve-all on the same rows is the $4,828 principal plus fees on all 95 frauds, with no review cost: $17,315. The savings are mostly “don’t pay the frauds you catch,” net of a short queue.
+Approve-all pays the principal on all 95 test frauds, $14,939.52, plus $25.00 on each ($2,375.00), and no review cost: $17,314.52. The $4,828 line is the principal of the 19 missed frauds only. The savings are mostly “don’t pay the frauds you catch,” net of a short queue.
 
 At 4 minutes a review, 101 test reviews are about 6.7 analyst hours. Scaled, the published queue is **18.3 reviews per 10,000 transactions**, or about **1.2 analyst hours per 10,000 transactions**.
 
@@ -260,7 +266,7 @@ Deploy this repository as-is. Main file `streamlit_app.py`. Python 3.12 (`.pytho
 
 The host does not need the OpenML file, and the app never calls out for it. Startup reads the queue grid, the 65-row sample, three training profiles, and the saved model. On load, the model is pinned to one worker. The pickle was fit with `n_jobs=-1`; leaving that in place forks a process per tree and will exhaust a 1 GB instance. A guard refuses to start if the model, the curve, or the sample exceed the size budget.
 
-Live demo: <https://fraud-detection-ml.streamlit.app>
+Intended host, sign-in required: <https://fraud-detection-ml.streamlit.app>. Unauthenticated requests are redirected to login. Access is pending.
 
 **Model comparison.** The held-out table and the charts. The test-cost leader is named even when it is not the deployed model.
 

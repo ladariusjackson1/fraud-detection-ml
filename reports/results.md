@@ -41,6 +41,8 @@ Public OpenML creditcard extract, verified at 284,807 rows and 492 frauds before
 | Amount-only rule | approve all | n/a | 0.000 | 0.0% | 0.0 | $17,315 | $0 |
 
 Approve-all test cost: $17,315.
+Each displayed dollar amount is rounded to the nearest dollar on its own. Exact approve-all cost is $17,314.52. Exact policy cost is $6,411.16. Exact savings are $10,903.35, which rounds to $10,903. Subtracting the already-rounded headlines gives $17,315 − $6,411 = $10,904.
+The savings column is the exact cost difference, rounded to the nearest dollar. It is not the difference of the rounded cost figures. Those two procedures differ by $1 for: Logistic regression, undersampled; Random forest; Isolation forest.
 Selected model: `random_forest`.
 Selection rule: Minimum validation dollar cost. Ties break toward higher validation PR-AUC, then the model key. The test set is not used to choose the model or the cutoff.
 

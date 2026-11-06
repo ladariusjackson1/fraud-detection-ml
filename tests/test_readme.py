@@ -11,7 +11,12 @@ from fraudlab.constants import TAG_OPENML, TAG_SYNTHETIC
 from fraudlab.costs import CostConfig
 from fraudlab.dashboard import load_desk
 from fraudlab.plots import FIGURE_FILES
-from fraudlab.reporting import money
+from fraudlab.reporting import (
+    approve_all_composition_note,
+    independent_rounding_note,
+    money,
+    savings_column_note,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +41,19 @@ def test_readme_quotes_the_public_scorecard():
         assert figure.stat().st_size > 1000
         assert name in readme
     assert "https://fraud-detection-ml.streamlit.app" in readme
-    assert "Live demo" in readme
+    assert "Live demo" not in readme
+    assert "sign-in" in readme
+    selected_note = independent_rounding_note(
+        metrics["approve_all_test_cost"], selected["test_cost"]
+    )
+    assert selected_note in readme
+    assert savings_column_note(metrics) in readme
+    composition = approve_all_composition_note(metrics)
+    assert composition is not None
+    assert composition in readme
+    assert "$4,828 principal plus fees on all 95" not in readme
+    for row in metrics["models"]:
+        assert money(row["val_cost"]) in readme
     assert "docs/review-desk.gif" in readme
     assert "MODEL_CARD.md" in readme
     assert "95%" in readme

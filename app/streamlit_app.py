@@ -44,7 +44,7 @@ from fraudlab.dashboard import (
 from fraudlab.explain import COMPONENT_NOTE, explain_ticket
 from fraudlab.monitoring import batch_psi, profile_table
 from fraudlab.plots import apply_style
-from fraudlab.reporting import format_ci, money, percent
+from fraudlab.reporting import format_ci, money, percent, savings_column_note
 from fraudlab.stream import replay_tally, score_demo_row
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -590,6 +590,7 @@ def _models_tab(assets) -> None:
     )
     st.dataframe(headline_comparison(assets.metrics), hide_index=True, width="stretch")
     st.dataframe(comparison_frame(assets.metrics), hide_index=True, width="stretch")
+    st.caption(plain(savings_column_note(assets.metrics)))
     st.caption(f"Test-cost leader: `{assets.metrics['test_cost_leader']}`.")
     figures = ROOT / "reports" / "figures"
     captions = {
