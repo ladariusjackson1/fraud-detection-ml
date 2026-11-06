@@ -40,7 +40,9 @@ from fraudlab.metrics import (
     choose_model,
     recall_at_precision,
 )
+from fraudlab.model_card import render_model_card
 from fraudlab.models import SPECS, fit_spec, positive_scores
+from fraudlab.monitoring import build_monitoring_reference
 from fraudlab.plots import (
     save_amount_by_class,
     save_class_balance,
@@ -454,6 +456,16 @@ def _write_artifacts(
         bank["amount_val"],
         saved_threshold=_threshold(selected),
     )
+    monitoring = build_monitoring_reference(
+        bank["y_val"],
+        bank["score_val"],
+        bank["amount_val"],
+        _threshold(selected),
+        cost,
+        has_time="Time" in feature_columns,
+    )
+    dump_json(artifacts / "monitoring_reference.json", monitoring)
+    (root / "MODEL_CARD.md").write_text(render_model_card(metrics, monitoring), encoding="utf-8")
     _write_demo(artifacts, test, bank["score_test"], metrics["random_state"])
     dump_json(artifacts / "scenarios.json", _profiles(train, feature_columns))
     write_data_source_note(root / "reports" / "DATA_SOURCE.txt", source_info)

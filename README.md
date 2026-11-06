@@ -10,7 +10,7 @@ The numbers below are from the public **OpenML creditcard · data id 1597** file
 
 ## Live demo
 
-The review desk is deployed at <https://fraud-detection-ml.streamlit.app>. It opens on a cached queue grid, a 65-ticket sample, and the saved random forest. It does not download the 284,807-row public file.
+The review desk is deployed at <https://fraud-detection-ml.streamlit.app>. It opens on a cached queue grid, a 65-ticket sample, and the saved random forest. It does not download the 284,807-row public file. The page has an alert-budget slider, a one-ticket replay of that sample, and a CSV scorer. The published test numbers on the overview do not move when those controls move.
 
 On the untouched test set that forest costs **$6,411** and saves **$10,903** against approving everything. The page can reprice the queue when the dollar assumptions change, and it can say, in plain English, which fields pushed one ticket’s fraud score up or down.
 
@@ -185,7 +185,7 @@ python -m fraudlab --source auto
 pytest
 ruff check .
 ruff format --check .
-streamlit run app/streamlit_app.py
+streamlit run streamlit_app.py
 ```
 
 `make train`, `make test`, `make lint`, and `make dashboard` call the same commands.
@@ -211,16 +211,48 @@ Outputs:
 | `artifacts/desk_curve.npz` | Cached queue grid for the Streamlit desk: 1,001 queue sizes scored on the validation book, stored as counts so the dollar assumptions can still move |
 | `artifacts/validation_scores.npz` | Validation labels, scores, and amounts. The training run writes this. The deployed app does not load it |
 | `artifacts/demo_transactions.csv` | 65 held-out sample tickets. Labels are in the file so the desk can reveal them |
+| `artifacts/monitoring_reference.json` | Validation flag rate, quantiles, and the random-half PSI |
+| `MODEL_CARD.md` | Generated card. Same numbers as `reports/metrics.json` |
 
 Joblib will execute code on load. Load only a model you produced locally.
 
+## Alert budget
+
+The test table answers a fixed cutoff. A desk lead asks a different question: if analysts can review N alerts a day, how many frauds are caught, and what does that cost?
+
+The app answers it from `artifacts/desk_curve.npz`. That file is 1,001 queue sizes scored on the 55,133-row validation book. N is converted to reviews per 10,000, snapped to the grid, and the validation rates are multiplied by a planning daily volume. The public extract has no timestamp. The source study covers two days, so the default volume is the modeling table divided by two.
+
+Planning volume is 137,831.5 transactions a day (2 days in the source extract, no timestamps to split). At 237 review slots a day the cached validation grid expects 182.5 frauds caught, 55.0 missed, and $19,684 of loss.
+
+237 is the published validation queue (17.2 reviews per 10,000) expressed as a day, not a new policy. 182.5 is validation recall times the frauds implied by that volume. It is not a count of a calendar day, and it is not the test-set result of 76 frauds caught out of 95. The overview KPIs stay on the test set. The slider can move the dollar assumptions; the loss figure moves with them. “Use the cost-minimizing queue” jumps to the cheapest point on the same grid.
+
+The validation precision-recall curve is drawn next to that slider, with the current queue marked. The test-set precision-recall curve is the saved chart `reports/figures/03_precision_recall.png`.
+
+## Monitoring
+
+Calendar drift was not measured. OpenML data id 1597 has no Time column. `artifacts/monitoring_reference.json` is the validation-book reference: flag rate, precision, recall, score quantiles, amount quantiles, and a random-half population stability index. Random-half PSI on the validation scores is 0.0002. That is two halves of the same book. It is not a drift event. A later file of at least 30 scored rows can be compared with `population_stability_index` against the saved validation scores. A PSI above 0.25 is a common credit-scorecard review trigger. That cutoff is a convention, not a number fit on this file.
+
+`MODEL_CARD.md` is rendered from `reports/metrics.json` and that reference. Do not hand-edit it. The headline table is class-weighted logistic regression, the random forest, and gradient boosting, each with test PR-AUC and a 95% bootstrap interval.
+
 ## Review desk
 
-`streamlit run app/streamlit_app.py` opens three tabs.
+`streamlit run streamlit_app.py` opens seven tabs. The same file is the Community Cloud entry point, so the repository root stays on the import path.
 
-**Queue cutoff.** Edit the three dollar assumptions. The chart replays `artifacts/desk_curve.npz`, a grid of 1,001 queue sizes scored on the full validation book before the app was packaged. “Use cost-minimizing queue” jumps the slider to the cheapest point on that grid. The four headline metrics at the top of the page stay the published test result. Dragging the slider does not rewrite them.
+**Overview.** Test PR-AUC with its interval, test cost, savings, frauds caught, and the three-model table. These are the published test numbers.
 
-**Score a transaction.** Score a held-out sample ticket, or a training-fold median profile, and change the amount. Under the score, the page says which fields pushed it up and which pushed it down, compared with a typical legitimate ticket. The page also shows the four possible costs for that ticket. It does not multiply the score by the amount and call that an expected loss. Reveal the held-out label when you want the realized cost of the call you just made. V1–V28 can be edited; they still do not have business names.
+**Alert budget.** The daily slider described above, the loss breakdown, and the validation precision-recall curve.
+
+**Live stream.** Steps through the 65 held-out sample tickets one at a time. Each ticket is scored by the saved forest and then explained in plain English: which fields pushed the score up or down relative to a typical legitimate ticket from the training fold. The label is shown after the call. The running tally is only the tickets you have stepped through. It is not the test scorecard.
+
+**Score one.** A held-out sample ticket, or a training-fold median profile, with the amount editable. The page shows the four possible costs for that ticket. It does not multiply the score by the amount and call that an expected loss. V1–V28 can be edited; they still do not have business names.
+
+**Batch CSV.** Upload up to 2,000 rows with V1–V28 and Amount. Download the scored file: score, review or approve, and a reason on the first flagged rows. A sample CSV with no labels is on the page. If the file has at least 30 rows, the page also reports score PSI against the validation reference.
+
+**Models.** The full held-out table, including bootstrap intervals, and the seven charts.
+
+**Monitoring.** The notes and quantiles from the reference file.
+
+The published cutoff is what “Score one” and the stream use. A checkbox on the alert-budget tab opts those scorers into the slider’s cutoff instead. Dragging the slider does not rewrite the overview.
 
 ## Streamlit Community Cloud
 
@@ -236,10 +268,10 @@ If `artifacts/` is missing, the page tells you to run `python -m fraudlab --sour
 
 ## Tests and CI
 
-GitHub Actions (`.github/workflows/ci.yml`) installs `requirements.txt` on Python 3.12 and runs `ruff check`, `ruff format --check`, and `pytest`. Coverage is measured on `fraudlab` and fails under 85%. The suite uses the synthetic generator, including a forced OpenML failure, so CI does not download the public file and does not need a network. The current local run of that suite is above the floor.
+GitHub Actions (`.github/workflows/ci.yml`) installs `requirements.txt` on Python 3.12 and runs `ruff check`, `ruff format --check`, and `pytest`. Coverage is measured on `fraudlab` and fails under 95%. The suite uses the synthetic generator, including a forced OpenML failure, so CI does not download the public file and does not need a network. The current local run of that suite is above the floor.
 
 ## What this is not
 
-This is a case study, not a production fraud system. The public extract is two days of European card traffic, already reduced to principal components, from a study published in 2015. Costs and the 1.10 FX rate are planning assumptions. There is one stratified split, not a drift monitor, not a challenger/champion rollout, and not a customer-level loss model. A review is assumed to save the full principal. Partial recovery, friendly fraud, and analyst capacity limits beyond the per-ticket fee are out of scope.
+This is a case study, not a production fraud system. The public extract is two days of European card traffic, already reduced to principal components, from a study published in 2015. Costs and the 1.10 FX rate are planning assumptions. There is one stratified split. The monitoring tab is a reference profile and a PSI function for a later file, not a measured drift event and not a challenger/champion rollout. It is not a customer-level loss model. A review is assumed to save the full principal. Partial recovery, friendly fraud, and analyst capacity limits beyond the per-ticket fee and the daily slider are out of scope.
 
 Re-fit before you brief anyone on a new book. Do not brief V1–V28 as if they were merchant categories.

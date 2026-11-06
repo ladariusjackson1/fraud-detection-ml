@@ -1,7 +1,15 @@
 import json
 from pathlib import Path
 
+from fraudlab.alert_budget import (
+    budget_brief,
+    evaluate_budget,
+    planning_daily_volume,
+    published_alert_count,
+)
 from fraudlab.constants import TAG_OPENML, TAG_SYNTHETIC
+from fraudlab.costs import CostConfig
+from fraudlab.dashboard import load_desk
 from fraudlab.plots import FIGURE_FILES
 from fraudlab.reporting import money
 
@@ -30,6 +38,16 @@ def test_readme_quotes_the_public_scorecard():
     assert "https://fraud-detection-ml.streamlit.app" in readme
     assert "Live demo" in readme
     assert "docs/review-desk.gif" in readme
+    assert "MODEL_CARD.md" in readme
+    assert "95%" in readme
+    desk = load_desk(ROOT)
+    cost = CostConfig.from_dict(desk.metadata["cost_config"])
+    daily = planning_daily_volume(int(metrics["data_source"]["rows"]))
+    alerts = published_alert_count(desk.curve, daily, cost)
+    brief = budget_brief(evaluate_budget(desk.curve, alerts, daily, cost))
+    assert brief in readme
+    psi = f"{float(desk.monitoring['validation_half_psi']):.4f}"
+    assert psi in readme
     gif = ROOT / "docs" / "review-desk.gif"
     assert gif.read_bytes()[:6] in {b"GIF87a", b"GIF89a"}
     assert gif.stat().st_size > 10_000

@@ -13,4 +13,4 @@ lint:
 	$(PYTHON) -m ruff format --check .
 
 dashboard:
-	$(PYTHON) -m streamlit run app/streamlit_app.py
+	$(PYTHON) -m streamlit run streamlit_app.py

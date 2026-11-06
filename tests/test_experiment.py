@@ -133,6 +133,12 @@ def test_cli_scorecard_round_trip(tmp_path):
     )
     assert info_level == "info"
     assert missing_artifacts(tmp_path / "missing")
+    monitoring_path = tmp_path / "artifacts" / "monitoring_reference.json"
+    assert monitoring_path.exists()
+    card = (tmp_path / "MODEL_CARD.md").read_text(encoding="utf-8")
+    assert "precision-recall AUC" in card
+    assert assets.metadata["model_key"] in card
+    assert desk.monitoring["notes"]
 
 
 def test_focus_queue_hides_the_flag_everyone_tail():
